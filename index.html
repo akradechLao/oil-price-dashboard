@@ -85,11 +85,24 @@
       display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;
     }
     .chart-controls label { color: #b8b8d4; font-size: 0.9em; }
-    .chart-controls select {
+    .chart-controls select, .chart-controls input[type="date"] {
       background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2);
       padding: 8px 14px; border-radius: 8px; font-size: 0.9em; cursor: pointer;
     }
     .chart-controls select option { background: #24243e; color: #fff; }
+    .chart-controls input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); }
+    .toggle-group {
+      display: inline-flex; border-radius: 8px; overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .toggle-group button {
+      background: rgba(255,255,255,0.05); color: #b8b8d4; border: none;
+      padding: 8px 16px; font-size: 0.9em; cursor: pointer; transition: all 0.2s;
+    }
+    .toggle-group button.active {
+      background: linear-gradient(90deg, #f7971e, #ffd200); color: #1a1a2e; font-weight: bold;
+    }
+    .toggle-group button:hover:not(.active) { background: rgba(255,255,255,0.1); }
     #chart_div {
       width: 100%; min-height: 400px; background: rgba(255,255,255,0.03);
       border-radius: 10px;
@@ -149,6 +162,15 @@
           <option value="premium_diesel">ดีเซลพรีเมียม</option>
           <option value="gasoline_95">เบนซิน 95</option>
         </select>
+        <label>แสดงผล:</label>
+        <div class="toggle-group">
+          <button id="modeDaily" class="active" onclick="setChartMode('daily')">รายวัน</button>
+          <button id="modeWeekly" onclick="setChartMode('weekly')">เฉลี่ยรายสัปดาห์</button>
+        </div>
+        <label>ตั้งแต่:</label>
+        <input type="date" id="dateFrom" onchange="loadChart()">
+        <label>ถึง:</label>
+        <input type="date" id="dateTo" onchange="loadChart()">
       </div>
       <div id="chart_div">
         <div class="chart-loading"><div class="spinner"></div>กำลังโหลดข้อมูลกราฟ...</div>
@@ -161,11 +183,11 @@
   </div>
 
   <script>
-    // ===== CONFIG =====
     var API_URL = 'https://api.chnwt.dev/thai-oil-api/latest';
     var SHEET_ID = '1su1DwSOwjr1Z9Tm1Uc9TBwa8O3bDsDJa3GE9hutoksg';
     var SHEET_NAME = 'ราคาน้ำมัน';
     var SHEETS_CSV_URL = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(SHEET_NAME);
+    var chartMode = 'daily';
 
     var stationDisplayNames = {
       'ptt':'PTT','bcp':'PTT/BCP','shell':'Shell','esso':'Esso',
@@ -183,7 +205,6 @@
       'superpower_gasohol_95','vpower_gasohol_95','vpower_diesel'
     ];
 
-    // ===== โหลดข้อมูลราคาล่าสุด =====
     function loadData() {
       var btn = document.getElementById('refreshBtn');
       btn.disabled = true; btn.textContent = 'กำลังโหลด...';
@@ -250,7 +271,85 @@
       document.getElementById('summaryGrid').innerHTML = html;
     }
 
-    // ===== โหลดกราฟย้อนหลังจาก Google Sheets =====
+    function setChartMode(mode) {
+      chartMode = mode;
+      document.getElementById('modeDaily').className = mode === 'daily' ? 'active' : '';
+      document.getElementById('modeWeekly').className = mode === 'weekly' ? 'active' : '';
+      loadChart();
+    }
+
+    function parseThaiDate(str) {
+      var parts = str.split('/');
+      if (parts.length !== 3) return null;
+      var day = parseInt(parts[0], 10);
+      var month = parseInt(parts[1], 10) - 1;
+      var year = parseInt(parts[2], 10);
+      if (year > 2400) year -= 543;
+      return new Date(year, month, day);
+    }
+
+    function formatDateTH(date) {
+      var d = date.getDate();
+      var m = date.getMonth() + 1;
+      var y = date.getFullYear() + 543;
+      return (d < 10 ? '0' : '') + d + '/' + (m < 10 ? '0' : '') + m + '/' + y;
+    }
+
+    function filterByDateRange(history) {
+      var fromStr = document.getElementById('dateFrom').value;
+      var toStr = document.getElementById('dateTo').value;
+      if (!fromStr && !toStr) return history;
+      var fromDate = fromStr ? new Date(fromStr) : null;
+      var toDate = toStr ? new Date(toStr) : null;
+      return history.filter(function(entry) {
+        var d = parseThaiDate(entry.date);
+        if (!d) return false;
+        if (fromDate && d < fromDate) return false;
+        if (toDate) {
+          var endOfDay = new Date(toDate);
+          endOfDay.setHours(23, 59, 59, 999);
+          if (d > endOfDay) return false;
+        }
+        return true;
+      });
+    }
+
+    function aggregateWeekly(history) {
+      if (!history || history.length === 0) return [];
+      var weeks = {};
+      var weekOrder = [];
+      history.forEach(function(entry) {
+        var d = parseThaiDate(entry.date);
+        if (!d) return;
+        var startOfWeek = new Date(d);
+        var day = startOfWeek.getDay();
+        var diff = day === 0 ? 6 : day - 1;
+        startOfWeek.setDate(startOfWeek.getDate() - diff);
+        var key = startOfWeek.getFullYear() + '-' + (startOfWeek.getMonth()+1) + '-' + startOfWeek.getDate();
+        if (!weeks[key]) {
+          weeks[key] = { start: startOfWeek, entries: [] };
+          weekOrder.push(key);
+        }
+        weeks[key].entries.push(entry);
+      });
+      return weekOrder.map(function(key) {
+        var w = weeks[key];
+        var endOfWeek = new Date(w.start);
+        endOfWeek.setDate(endOfWeek.getDate() + 6);
+        var label = formatDateTH(w.start) + ' - ' + formatDateTH(endOfWeek);
+        var agg = { date: label };
+        var allKeys = Object.keys(w.entries[0]).filter(function(k) { return k !== 'date'; });
+        allKeys.forEach(function(k) {
+          var sum = 0, count = 0;
+          w.entries.forEach(function(e) {
+            if (e[k] !== null && e[k] !== undefined) { sum += e[k]; count++; }
+          });
+          agg[k] = count > 0 ? Math.round((sum / count) * 100) / 100 : null;
+        });
+        return agg;
+      });
+    }
+
     function loadChart() {
       var fuelType = document.getElementById('fuelSelect').value;
       var chartDiv = document.getElementById('chart_div');
@@ -270,7 +369,15 @@
             chartDiv.innerHTML = '<div class="no-data">ยังไม่มีข้อมูลย้อนหลังเพียงพอ (ต้องมีอย่างน้อย 2 วัน)</div>';
             return;
           }
-          renderChart(history, fuelType);
+          var filtered = filterByDateRange(history);
+          if (chartMode === 'weekly') {
+            filtered = aggregateWeekly(filtered);
+          }
+          if (!filtered || filtered.length < 1) {
+            chartDiv.innerHTML = '<div class="no-data">ไม่มีข้อมูลในช่วงวันที่เลือก</div>';
+            return;
+          }
+          renderChart(filtered, fuelType);
         })
         .catch(function(err) {
           if (err.message === 'AUTH_ERROR') {
@@ -279,7 +386,7 @@
                 '<strong>ไม่สามารถเข้าถึงข้อมูลกราฟได้</strong><br><br>' +
                 'Google Sheet ยังไม่ได้เปิดให้เข้าถึงสาธารณะ<br>' +
                 'กรุณาเปิด Sheet แล้วไปที่ <em>ไฟล์ → แชร์ → เผยแพร่บนเว็บ</em><br>' +
-                'เลือกชี트 "ราคาน้ำมัน" แล้วกด <em>เผยแพร่</em>' +
+                'เลือกชีท "ราคาน้ำมัน" แล้วกด <em>เผยแพร่</em>' +
               '</div>';
           } else {
             chartDiv.innerHTML =
@@ -295,7 +402,6 @@
       var lines = csvText.split('\n').filter(function(l) { return l.trim() !== ''; });
       if (lines.length < 2) return [];
 
-      var headers = parseCSVLine(lines[0]);
       var fuelOrder = [
         'gasoline_95','gasohol_95','gasohol_91','gasohol_e20','gasohol_e85',
         'diesel','diesel_b7','diesel_b20','premium_diesel',
@@ -370,7 +476,6 @@
       });
     }
 
-    // ===== เริ่มต้น =====
     loadData();
   </script>
 </body>
