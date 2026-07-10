@@ -9,8 +9,15 @@ var API_URL = 'https://api.chnwt.dev/thai-oil-api/latest';
 // ==================== Web App ====================
 
 function doGet(e) {
-  return HtmlService.createHtmlOutputFromFile('dashboard')
-    .setTitle('Dashboard ราคาน้ำมัน ( Apps Script )')
+  var page = e && e.parameter && e.parameter.page ? e.parameter.page : 'dashboard';
+
+  var titles = {
+    'dashboard': 'Dashboard ราคาน้ำมัน ( Apps Script )',
+    'ptt': 'PTT Price Changes Dashboard'
+  };
+
+  return HtmlService.createHtmlOutputFromFile(page)
+    .setTitle(titles[page] || titles['dashboard'])
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }

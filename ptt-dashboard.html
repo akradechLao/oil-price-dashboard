@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PTT Price Changes Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛽</text></svg>">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      min-height: 100vh; color: #fff;
+    }
+    .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+    .header { text-align: center; padding: 30px 0 20px; }
+    .header h1 {
+      font-size: 2.2em;
+      background: linear-gradient(90deg, #f7971e, #ffd200);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+    .header .date-display { font-size: 1.1em; color: #b8b8d4; }
+    .nav-bar {
+      display: flex; justify-content: center; gap: 15px; margin: 15px 0 30px;
+    }
+    .nav-btn {
+      background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.2);
+      padding: 10px 20px; border-radius: 20px; font-size: 0.9em; cursor: pointer;
+      text-decoration: none; transition: all 0.2s;
+    }
+    .nav-btn:hover { background: rgba(255,255,255,0.15); }
+    .nav-btn.active { background: linear-gradient(90deg, #f7971e, #ffd200); color: #1a1a2e; font-weight: bold; border: none; }
+    .action-bar { text-align: center; margin: 20px 0; display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      background: linear-gradient(90deg, #f7971e, #ffd200); color: #1a1a2e;
+      border: none; padding: 12px 30px; border-radius: 25px;
+      font-size: 1em; font-weight: bold; cursor: pointer; transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary {
+      background: rgba(255,255,255,0.1); color: #fff;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .price-table {
+      width: 100%; border-collapse: collapse; margin-top: 20px;
+      background: rgba(255,255,255,0.06); border-radius: 16px; overflow: hidden;
+    }
+    .price-table thead th {
+      background: rgba(255,255,255,0.1); padding: 15px 12px;
+      text-align: center; font-weight: bold; color: #ffd200; font-size: 0.95em;
+      border-bottom: 2px solid rgba(255,255,255,0.15);
+    }
+    .price-table thead th:first-child { text-align: left; }
+    .price-table tbody td {
+      padding: 14px 12px; text-align: center;
+      border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 0.95em;
+    }
+    .price-table tbody td:first-child {
+      text-align: left; color: #b8b8d4; font-weight: 500;
+    }
+    .price-table tbody tr:hover { background: rgba(255,255,255,0.04); }
+    .price-table tbody tr:last-child td { border-bottom: none; }
+    .change-up { color: #f44336; font-weight: bold; }
+    .change-down { color: #4caf50; font-weight: bold; }
+    .change-same { color: #888; }
+    .price-current { font-weight: bold; color: #4fc3f7; }
+    .price-prev { color: #888; font-size: 0.9em; }
+    .summary-box {
+      background: rgba(255,255,255,0.06); border-radius: 16px;
+      padding: 25px; margin-bottom: 30px; border: 1px solid rgba(255,255,255,0.1);
+    }
+    .summary-box h2 { font-size: 1.3em; margin-bottom: 15px; color: #ffd200; }
+    .summary-stats {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 15px;
+    }
+    .stat-item {
+      background: rgba(255,255,255,0.05); padding: 18px;
+      border-radius: 12px; text-align: center;
+    }
+    .stat-item .stat-label { font-size: 0.85em; color: #b8b8d4; margin-bottom: 8px; }
+    .stat-item .stat-value { font-size: 1.8em; font-weight: bold; }
+    .stat-value.up { color: #f44336; }
+    .stat-value.down { color: #4caf50; }
+    .stat-value.neutral { color: #4fc3f7; }
+    .table-section {
+      background: rgba(255,255,255,0.06); border-radius: 16px;
+      padding: 25px; margin-bottom: 30px; border: 1px solid rgba(255,255,255,0.1);
+    }
+    .table-section h2 { font-size: 1.3em; margin-bottom: 15px; color: #ffd200; }
+    .loading { text-align: center; padding: 60px; font-size: 1.2em; color: #b8b8d4; }
+    .spinner {
+      border: 4px solid rgba(255,255,255,0.1); border-top: 4px solid #ffd200;
+      border-radius: 50%; width: 40px; height: 40px;
+      animation: spin 1s linear infinite; margin: 0 auto 15px;
+    }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    .no-data { text-align: center; padding: 40px; color: #ff9800; line-height: 1.8; }
+    .footer { text-align: center; padding: 20px; color: #666; font-size: 0.85em; }
+    .footer a { color: #4fc3f7; }
+    @media (max-width: 600px) {
+      .price-table { font-size: 0.85em; }
+      .price-table thead th, .price-table tbody td { padding: 10px 6px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="exportArea">
+    <div class="header">
+      <h1>⛽ PTT ราคาน้ำมัน - การเปลี่ยนแปลง</h1>
+      <div class="date-display" id="dateDisplay">กำลังโหลด...</div>
+    </div>
+    <div class="nav-bar">
+      <a href="index.html" class="nav-btn">Dashboard หลัก</a>
+      <a href="ptt-dashboard.html" class="nav-btn active">PTT Price Changes</a>
+    </div>
+    <div class="action-bar">
+      <button class="btn" id="refreshBtn" onclick="loadData()">รีเฟรชข้อมูล</button>
+      <button class="btn btn-secondary" onclick="exportToPNG()">export เป็น PNG</button>
+    </div>
+    <div class="summary-box">
+      <h2>สรุปการเปลี่ยนแปลง</h2>
+      <div class="summary-stats" id="summaryStats"></div>
+    </div>
+    <div class="table-section">
+      <h2>รายละเอียดราคา PTT</h2>
+      <div id="priceTableContainer">
+        <div class="loading"><div class="spinner"></div>กำลังโหลดข้อมูล...</div>
+      </div>
+    </div>
+    <div class="footer">
+      ข้อมูลจาก <a href="https://github.com/max180643/thai-oil-api">Thai Oil API</a>
+      | อัปเดตอัตโนมัติทุกวัน 07:00 น.
+    </div>
+  </div>
+
+  <script>
+    var API_URL = 'https://api.chnwt.dev/thai-oil-api/latest';
+    var SHEET_ID = '1su1DwSOwjr1Z9Tm1Uc9TBwa8O3bDsDJa3GE9hutoksg';
+    var SHEET_NAME = 'ราคาน้ำมัน';
+    var SHEETS_CSV_URL = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(SHEET_NAME);
+
+    var fuelLabels = {
+      'gasoline_95': 'เบนซิน 95',
+      'gasohol_95': 'แก๊สโซฮอล์ 95',
+      'gasohol_91': 'แก๊สโซฮอล์ 91',
+      'gasohol_e20': 'แก๊สโซฮอล์ E20',
+      'gasohol_e85': 'แก๊สโซฮอล์ E85',
+      'diesel': 'ดีเซล',
+      'diesel_b7': 'ดีเซล B7',
+      'diesel_b20': 'ดีเซล B20',
+      'premium_diesel': 'ดีเซลพรีเมียม',
+      'premium_gasohol_95': 'แก๊สโซฮอล์ 95 พรีเมียม',
+      'superpower_gasohol_95': 'Superpower 95',
+      'vpower_gasohol_95': 'V-Power 95',
+      'vpower_diesel': 'V-Power Diesel',
+      'vpower_diesel_b7': 'V-Power Diesel B7',
+      'premium_gasohol_97': 'แก๊สโซฮอล์ 97 พรีเมียม',
+      'ngv': 'NGV'
+    };
+
+    var fuelOrder = [
+      'gasoline_95', 'gasohol_95', 'gasohol_91', 'gasohol_e20', 'gasohol_e85',
+      'diesel', 'diesel_b7', 'diesel_b20', 'premium_diesel',
+      'premium_gasohol_95', 'superpower_gasohol_95', 'vpower_gasohol_95',
+      'vpower_diesel', 'vpower_diesel_b7', 'premium_gasohol_97', 'ngv'
+    ];
+
+    function loadData() {
+      var btn = document.getElementById('refreshBtn');
+      btn.disabled = true; btn.textContent = 'กำลังโหลด...';
+      document.getElementById('priceTableContainer').innerHTML =
+        '<div class="loading"><div class="spinner"></div>กำลังโหลดข้อมูล...</div>';
+
+      fetch(API_URL)
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          renderPTTData(data);
+          btn.disabled = false; btn.textContent = 'รีเฟรชข้อมูล';
+        })
+        .catch(function(err) {
+          document.getElementById('priceTableContainer').innerHTML =
+            '<div class="no-data">ผิดพลาด: ' + err.message + '</div>';
+          btn.disabled = false; btn.textContent = 'รีเฟรชข้อมูล';
+        });
+
+      loadHistory();
+    }
+
+    function renderPTTData(data) {
+      if (data.status !== 'success' || !data.response.stations.ptt) {
+        document.getElementById('priceTableContainer').innerHTML =
+          '<div class="no-data">ไม่สามารถดึงข้อมูล PTT ได้</div>';
+        return;
+      }
+      document.getElementById('dateDisplay').textContent = 'วันที่: ' + data.response.date;
+      window._currentPTT = data.response.stations.ptt;
+    }
+
+    function loadHistory() {
+      fetch(SHEETS_CSV_URL)
+        .then(function(res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.text();
+        })
+        .then(function(csvText) {
+          var history = parseCSV(csvText);
+          if (history.length < 2) {
+            document.getElementById('priceTableContainer').innerHTML =
+              '<div class="no-data">ยังไม่มีข้อมูลย้อนหลังเพียงพอ (ต้องมีอย่างน้อย 2 วัน)</div>';
+            return;
+          }
+          var latest = history[history.length - 1];
+          var prev = history[history.length - 2];
+          renderPriceTable(latest, prev);
+          renderSummary(latest, prev);
+        })
+        .catch(function(err) {
+          document.getElementById('priceTableContainer').innerHTML =
+            '<div class="no-data">ไม่สามารถโหลดข้อมูลย้อนหลังได้<br>' + err.message + '</div>';
+        });
+    }
+
+    function parseCSV(csvText) {
+      var lines = csvText.split('\n').filter(function(l) { return l.trim() !== ''; });
+      if (lines.length < 2) return [];
+
+      var stationOrder = ['ptt','bcp','shell','esso','caltex','irpc','pt','susco','pure','susco_dealers'];
+      var fuelOrderLocal = [
+        'gasoline_95','gasohol_95','gasohol_91','gasohol_e20','gasohol_e85',
+        'diesel','diesel_b7','diesel_b20','premium_diesel',
+        'premium_gasohol_95','superpower_gasohol_95','vpower_gasohol_95',
+        'vpower_diesel','vpower_diesel_b7','premium_gasohol_97','ngv'
+      ];
+
+      var rows = [];
+      for (var i = 1; i < lines.length; i++) {
+        var cols = parseCSVLine(lines[i]);
+        var entry = { date: cols[0] };
+        var colIndex = 2;
+        stationOrder.forEach(function(station) {
+          fuelOrderLocal.forEach(function(fuel) {
+            var key = station + '_' + fuel;
+            var val = cols[colIndex] ? parseFloat(cols[colIndex]) : null;
+            entry[key] = isNaN(val) ? null : val;
+            colIndex++;
+          });
+        });
+        rows.push(entry);
+      }
+      return rows;
+    }
+
+    function parseCSVLine(line) {
+      var result = [];
+      var current = '';
+      var inQuotes = false;
+      for (var i = 0; i < line.length; i++) {
+        var c = line[i];
+        if (c === '"') { inQuotes = !inQuotes; }
+        else if (c === ',' && !inQuotes) { result.push(current.trim()); current = ''; }
+        else { current += c; }
+      }
+      result.push(current.trim());
+      return result;
+    }
+
+    function renderPriceTable(latest, prev) {
+      var html = '<table class="price-table"><thead><tr>' +
+        '<th>ชนิดน้ำมัน</th><th>ราคาล่าสุด</th><th>ราคาก่อนหน้า</th><th>เปลี่ยนแปลง</th><th>% เปลี่ยนแปลง</th>' +
+        '</tr></thead><tbody>';
+
+      fuelOrder.forEach(function(fuel) {
+        var current = latest['ptt_' + fuel];
+        var previous = prev['ptt_' + fuel];
+        var label = fuelLabels[fuel] || fuel;
+
+        if (current === null || current === undefined) return;
+
+        var changeHtml = '<span class="change-same">-</span>';
+        var pctHtml = '<span class="change-same">-</span>';
+
+        if (previous !== null && previous !== undefined && previous !== 0) {
+          var change = current - previous;
+          var pct = ((change / previous) * 100).toFixed(2);
+          if (change > 0) {
+            changeHtml = '<span class="change-up">+' + change.toFixed(2) + '</span>';
+            pctHtml = '<span class="change-up">+' + pct + '%</span>';
+          } else if (change < 0) {
+            changeHtml = '<span class="change-down">' + change.toFixed(2) + '</span>';
+            pctHtml = '<span class="change-down">' + pct + '%</span>';
+          } else {
+            changeHtml = '<span class="change-same">0.00</span>';
+            pctHtml = '<span class="change-same">0.00%</span>';
+          }
+        }
+
+        html += '<tr>' +
+          '<td>' + label + '</td>' +
+          '<td class="price-current">' + current.toFixed(2) + ' ฿</td>' +
+          '<td class="price-prev">' + (previous !== null ? previous.toFixed(2) + ' ฿' : '-') + '</td>' +
+          '<td>' + changeHtml + '</td>' +
+          '<td>' + pctHtml + '</td>' +
+          '</tr>';
+      });
+
+      html += '</tbody></table>';
+      document.getElementById('priceTableContainer').innerHTML = html;
+    }
+
+    function renderSummary(latest, prev) {
+      var totalUp = 0, totalDown = 0, totalSame = 0;
+      var maxUp = { fuel: '', pct: 0 };
+      var maxDown = { fuel: '', pct: 0 };
+
+      fuelOrder.forEach(function(fuel) {
+        var current = latest['ptt_' + fuel];
+        var previous = prev['ptt_' + fuel];
+        if (current === null || current === undefined) return;
+        if (previous === null || previous === undefined || previous === 0) return;
+
+        var change = current - previous;
+        var pct = (change / previous) * 100;
+
+        if (change > 0) {
+          totalUp++;
+          if (pct > maxUp.pct) { maxUp = { fuel: fuelLabels[fuel] || fuel, pct: pct }; }
+        } else if (change < 0) {
+          totalDown++;
+          if (pct < maxDown.pct) { maxDown = { fuel: fuelLabels[fuel] || fuel, pct: pct }; }
+        } else {
+          totalSame++;
+        }
+      });
+
+      var html = '<div class="stat-item">' +
+        '<div class="stat-label">ราคาขึ้น</div>' +
+        '<div class="stat-value up">' + totalUp + ' ชนิด</div></div>' +
+        '<div class="stat-item"><div class="stat-label">ราคาลง</div>' +
+        '<div class="stat-value down">' + totalDown + ' ชนิด</div></div>' +
+        '<div class="stat-item"><div class="stat-label">ไม่เปลี่ยน</div>' +
+        '<div class="stat-value neutral">' + totalSame + ' ชนิด</div></div>';
+
+      if (maxUp.pct > 0) {
+        html += '<div class="stat-item"><div class="stat-label">ขึ้นมากสุด</div>' +
+          '<div class="stat-value up">' + maxUp.pct.toFixed(2) + '%</div>' +
+          '<div class="stat-label">' + maxUp.fuel + '</div></div>';
+      }
+      if (maxDown.pct < 0) {
+        html += '<div class="stat-item"><div class="stat-label">ลงมากสุด</div>' +
+          '<div class="stat-value down">' + maxDown.pct.toFixed(2) + '%</div>' +
+          '<div class="stat-label">' + maxDown.fuel + '</div></div>';
+      }
+
+      document.getElementById('summaryStats').innerHTML = html;
+    }
+
+    function exportToPNG() {
+      var element = document.getElementById('exportArea');
+      html2canvas(element, {
+        backgroundColor: '#0f0c29',
+        scale: 2,
+        useCORS: true
+      }).then(function(canvas) {
+        var link = document.createElement('a');
+        link.download = 'PTT_Price_Changes_' + new Date().toISOString().slice(0,10) + '.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      });
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
