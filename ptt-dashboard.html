@@ -175,32 +175,10 @@
       document.getElementById('priceTableContainer').innerHTML =
         '<div class="loading"><div class="spinner"></div>กำลังโหลดข้อมูล...</div>';
 
-      fetch(API_URL)
-        .then(function(res) { return res.json(); })
-        .then(function(data) {
-          renderPTTData(data);
-          btn.disabled = false; btn.textContent = 'รีเฟรชข้อมูล';
-        })
-        .catch(function(err) {
-          document.getElementById('priceTableContainer').innerHTML =
-            '<div class="no-data">ผิดพลาด: ' + err.message + '</div>';
-          btn.disabled = false; btn.textContent = 'รีเฟรชข้อมูล';
-        });
-
-      loadHistory();
+      loadHistory(btn);
     }
 
-    function renderPTTData(data) {
-      if (data.status !== 'success' || !data.response.stations.ptt) {
-        document.getElementById('priceTableContainer').innerHTML =
-          '<div class="no-data">ไม่สามารถดึงข้อมูล PTT ได้</div>';
-        return;
-      }
-      document.getElementById('dateDisplay').textContent = 'วันที่: ' + data.response.date;
-      window._currentPTT = data.response.stations.ptt;
-    }
-
-    function loadHistory() {
+    function loadHistory(btn) {
       fetch(SHEETS_CSV_URL)
         .then(function(res) {
           if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -208,19 +186,27 @@
         })
         .then(function(csvText) {
           var history = parseCSV(csvText);
-          if (history.length < 2) {
+          var validHistory = history.filter(function(entry) {
+            var hasData = entry['ptt_gasoline_95'] !== null && entry['ptt_gasoline_95'] !== 0;
+            return hasData;
+          });
+          if (validHistory.length < 2) {
             document.getElementById('priceTableContainer').innerHTML =
               '<div class="no-data">ยังไม่มีข้อมูลย้อนหลังเพียงพอ (ต้องมีอย่างน้อย 2 วัน)</div>';
+            if (btn) { btn.disabled = false; btn.textContent = 'รีเฟรชข้อมูล'; }
             return;
           }
-          var latest = history[history.length - 1];
-          var prev = history[history.length - 2];
+          var latest = validHistory[validHistory.length - 1];
+          var prev = validHistory[validHistory.length - 2];
+          document.getElementById('dateDisplay').textContent = 'ข้อมูลล่าสุด: ' + latest.date + ' (เทียบกับ ' + prev.date + ')';
           renderPriceTable(latest, prev);
           renderSummary(latest, prev);
+          if (btn) { btn.disabled = false; btn.textContent = 'รีเฟรชข้อมูล'; }
         })
         .catch(function(err) {
           document.getElementById('priceTableContainer').innerHTML =
             '<div class="no-data">ไม่สามารถโหลดข้อมูลย้อนหลังได้<br>' + err.message + '</div>';
+          if (btn) { btn.disabled = false; btn.textContent = 'รีเฟรชข้อมูล'; }
         });
     }
 
